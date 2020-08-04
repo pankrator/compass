@@ -23,10 +23,20 @@ func TestClient_FetchTenantEventsPage(t *testing.T) {
 	metricsPusherMock := fixMetricsPusherMock()
 	defer metricsPusherMock.AssertExpectations(t)
 
+	queryParams := tenantfetcher.QueryParams{
+		"pageSize":  "1",
+		"pageNum":   "1",
+		"timestamp": "1",
+	}
+
 	apiCfg := tenantfetcher.APIConfig{
 		EndpointTenantCreated: endpoint + "/created",
 		EndpointTenantDeleted: endpoint + "/deleted",
 		EndpointTenantUpdated: endpoint + "/updated",
+
+		EventsField:       "events",
+		TotalPagesField:   "totalPages",
+		TotalResultsField: "totalResults",
 	}
 	client := tenantfetcher.NewClient(tenantfetcher.OAuth2Config{}, apiCfg)
 	client.SetMetricsPusher(metricsPusherMock)
@@ -34,7 +44,7 @@ func TestClient_FetchTenantEventsPage(t *testing.T) {
 
 	t.Run("Success fetching creation events", func(t *testing.T) {
 		// WHEN
-		res, err := client.FetchTenantEventsPage(tenantfetcher.CreatedEventsType, 1)
+		res, err := client.FetchTenantEventsPage(tenantfetcher.CreatedEventsType, queryParams)
 		// THEN
 		require.NoError(t, err)
 		assert.NotEmpty(t, res)
@@ -42,7 +52,7 @@ func TestClient_FetchTenantEventsPage(t *testing.T) {
 
 	t.Run("Success fetching update events", func(t *testing.T) {
 		// WHEN
-		res, err := client.FetchTenantEventsPage(tenantfetcher.UpdatedEventsType, 1)
+		res, err := client.FetchTenantEventsPage(tenantfetcher.UpdatedEventsType, queryParams)
 		// THEN
 		require.NoError(t, err)
 		assert.NotEmpty(t, res)
@@ -50,7 +60,7 @@ func TestClient_FetchTenantEventsPage(t *testing.T) {
 
 	t.Run("Success fetching deletion events", func(t *testing.T) {
 		// WHEN
-		res, err := client.FetchTenantEventsPage(tenantfetcher.DeletedEventsType, 1)
+		res, err := client.FetchTenantEventsPage(tenantfetcher.DeletedEventsType, queryParams)
 		// THEN
 		require.NoError(t, err)
 		assert.NotEmpty(t, res)
@@ -58,7 +68,7 @@ func TestClient_FetchTenantEventsPage(t *testing.T) {
 
 	t.Run("Error when unkown events type", func(t *testing.T) {
 		// WHEN
-		res, err := client.FetchTenantEventsPage(-1, 1)
+		res, err := client.FetchTenantEventsPage(-1, queryParams)
 		// THEN
 		require.EqualError(t, err, apperrors.NewInternalError("unknown events type").Error())
 		assert.Empty(t, res)
@@ -76,15 +86,15 @@ func TestClient_FetchTenantEventsPage(t *testing.T) {
 
 	t.Run("Success when no content", func(t *testing.T) {
 		// WHEN
-		res, err := client.FetchTenantEventsPage(tenantfetcher.UpdatedEventsType, 1)
+		res, err := client.FetchTenantEventsPage(tenantfetcher.UpdatedEventsType, queryParams)
 		// THEN
 		require.NoError(t, err)
-		require.Empty(t, res)
+		require.Empty(t, res.Events)
 	})
 
 	t.Run("Error when endpoint not parsable", func(t *testing.T) {
 		// WHEN
-		res, err := client.FetchTenantEventsPage(tenantfetcher.CreatedEventsType, 1)
+		res, err := client.FetchTenantEventsPage(tenantfetcher.CreatedEventsType, queryParams)
 		// THEN
 		require.EqualError(t, err, "parse \"___ :// ___ \": first path segment in URL cannot contain colon")
 		assert.Empty(t, res)
@@ -92,9 +102,9 @@ func TestClient_FetchTenantEventsPage(t *testing.T) {
 
 	t.Run("Error when bad path", func(t *testing.T) {
 		// WHEN
-		res, err := client.FetchTenantEventsPage(tenantfetcher.DeletedEventsType, 1)
+		res, err := client.FetchTenantEventsPage(tenantfetcher.DeletedEventsType, queryParams)
 		// THEN
-		require.EqualError(t, err, "while sending get request: Get \"http://127.0.0.1:8111/badpath?page=1&resultsPerPage=1000&ts=1\": dial tcp 127.0.0.1:8111: connect: connection refused")
+		require.EqualError(t, err, "while sending get request: Get \"http://127.0.0.1:8111/badpath?pageNum=1&pageSize=1&timestamp=1\": dial tcp 127.0.0.1:8111: connect: connection refused")
 		assert.Empty(t, res)
 	})
 }

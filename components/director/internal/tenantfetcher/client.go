@@ -2,20 +2,23 @@ package tenantfetcher
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/kyma-incubator/compass/components/director/pkg/apperrors"
+	"github.com/tidwall/gjson"
 
 	pkgErrors "github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2/clientcredentials"
+)
+
+const (
+	maxErrMessageLength = 50
 )
 
 type OAuth2Config struct {
@@ -28,6 +31,10 @@ type APIConfig struct {
 	EndpointTenantCreated string `envconfig:"APP_ENDPOINT_TENANT_CREATED"`
 	EndpointTenantDeleted string `envconfig:"APP_ENDPOINT_TENANT_DELETED"`
 	EndpointTenantUpdated string `envconfig:"APP_ENDPOINT_TENANT_UPDATED"`
+
+	TotalPagesField   string `envconfig:"APP_TENANT_TOTAL_PAGES_FIELD"`
+	TotalResultsField string `envconfig:"APP_TENANT_TOTAL_RESULTS_FIELD"`
+	EventsField       string `envconfig:"APP_TENANT_EVENTS_FIELD"`
 }
 
 //go:generate mockery -name=MetricsPusher -output=automock -outpkg=automock -case=underscore
@@ -35,17 +42,45 @@ type MetricsPusher interface {
 	RecordEventingRequest(method string, statusCode int, desc string)
 }
 
+// QueryParams describes the key and the corresponding value for query parameters when requesting the service
+type QueryParams map[string]string
+
+// tenantResponseMapper describes which fields correspond to what value from the service's response
+type tenantResponseMapper struct {
+	TotalPagesField   string
+	TotalResultsField string
+	EventsField       string
+}
+
+// Remap returns the actual tenant event response mapped by the provided fields in the struct
+func (trd *tenantResponseMapper) Remap(b []byte) TenantEventsResponse {
+	events := gjson.GetBytes(b, trd.EventsField)
+	if !events.Exists() {
+		return TenantEventsResponse{
+			Events:       nil,
+			TotalResults: 0,
+			TotalPages:   1,
+		}
+	}
+
+	totalPages := gjson.GetBytes(b, trd.TotalPagesField).Int()
+	totalResults := gjson.GetBytes(b, trd.TotalResultsField).Int()
+
+	return TenantEventsResponse{
+		Events:       []byte(events.Raw),
+		TotalPages:   int(totalPages),
+		TotalResults: int(totalResults),
+	}
+}
+
+// Client implements the communication with the service
 type Client struct {
 	httpClient    *http.Client
 	metricsPusher MetricsPusher
 
-	apiConfig APIConfig
+	responseMapper tenantResponseMapper
+	apiConfig      APIConfig
 }
-
-const (
-	pageSize            = 1000
-	maxErrMessageLength = 50
-)
 
 func NewClient(oAuth2Config OAuth2Config, apiConfig APIConfig) *Client {
 	cfg := clientcredentials.Config{
@@ -59,6 +94,11 @@ func NewClient(oAuth2Config OAuth2Config, apiConfig APIConfig) *Client {
 	return &Client{
 		httpClient: httpClient,
 		apiConfig:  apiConfig,
+		responseMapper: tenantResponseMapper{
+			EventsField:       apiConfig.EventsField,
+			TotalPagesField:   apiConfig.TotalPagesField,
+			TotalResultsField: apiConfig.TotalResultsField,
+		},
 	}
 }
 
@@ -66,13 +106,13 @@ func (c *Client) SetMetricsPusher(metricsPusher MetricsPusher) {
 	c.metricsPusher = metricsPusher
 }
 
-func (c *Client) FetchTenantEventsPage(eventsType EventsType, pageNumber int) (*TenantEventsResponse, error) {
+func (c *Client) FetchTenantEventsPage(eventsType EventsType, additionalQueryParams QueryParams) (*TenantEventsResponse, error) {
 	endpoint, err := c.getEndpointForEventsType(eventsType)
 	if err != nil {
 		return nil, err
 	}
 
-	reqURL, err := c.buildRequestURL(endpoint, pageNumber)
+	reqURL, err := c.buildRequestURL(endpoint, additionalQueryParams)
 	if err != nil {
 		return nil, err
 	}
@@ -96,14 +136,11 @@ func (c *Client) FetchTenantEventsPage(eventsType EventsType, pageNumber int) (*
 		c.metricsPusher.RecordEventingRequest(http.MethodGet, res.StatusCode, res.Status)
 	}
 
-	var tenantEvents TenantEventsResponse
-	err = json.NewDecoder(res.Body).Decode(&tenantEvents)
+	bytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		if err == io.EOF {
-			return nil, nil
-		}
-		return nil, pkgErrors.Wrap(err, "while decoding response body")
+		return nil, pkgErrors.Wrap(err, "while reading response body")
 	}
+	tenantEvents := c.responseMapper.Remap(bytes)
 
 	return &tenantEvents, nil
 }
@@ -121,7 +158,7 @@ func (c *Client) getEndpointForEventsType(eventsType EventsType) (string, error)
 	}
 }
 
-func (c *Client) buildRequestURL(endpoint string, pageNumber int) (string, error) {
+func (c *Client) buildRequestURL(endpoint string, queryParams QueryParams) (string, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return "", err
@@ -132,9 +169,9 @@ func (c *Client) buildRequestURL(endpoint string, pageNumber int) (string, error
 		return "", err
 	}
 
-	q.Add("ts", "1")
-	q.Add("resultsPerPage", strconv.Itoa(pageSize))
-	q.Add("page", strconv.Itoa(pageNumber))
+	for qKey, qValue := range queryParams {
+		q.Add(qKey, qValue)
+	}
 
 	u.RawQuery = q.Encode()
 
