@@ -201,6 +201,10 @@ type ComplexityRoot struct {
 		Type         func(childComplexity int) int
 	}
 
+	EventSubscription struct {
+		Address func(childComplexity int) int
+	}
+
 	FetchRequest struct {
 		Auth   func(childComplexity int) int
 		Filter func(childComplexity int) int
@@ -286,6 +290,7 @@ type ComplexityRoot struct {
 		RequestClientCredentialsForApplication        func(childComplexity int, id string) int
 		RequestClientCredentialsForIntegrationSystem  func(childComplexity int, id string) int
 		RequestClientCredentialsForRuntime            func(childComplexity int, id string) int
+		RequestEventSubscription                      func(childComplexity int, subject string, webhook *EventWebhook) int
 		RequestOneTimeTokenForApplication             func(childComplexity int, id string) int
 		RequestOneTimeTokenForRuntime                 func(childComplexity int, id string) int
 		RequestPackageInstanceAuthCreation            func(childComplexity int, packageID string, in PackageInstanceAuthRequestInput) int
@@ -536,6 +541,7 @@ type MutationResolver interface {
 	CreateAutomaticScenarioAssignment(ctx context.Context, in AutomaticScenarioAssignmentSetInput) (*AutomaticScenarioAssignment, error)
 	DeleteAutomaticScenarioAssignmentForScenario(ctx context.Context, scenarioName string) (*AutomaticScenarioAssignment, error)
 	DeleteAutomaticScenarioAssignmentsForSelector(ctx context.Context, selector LabelSelectorInput) ([]*AutomaticScenarioAssignment, error)
+	RequestEventSubscription(ctx context.Context, subject string, webhook *EventWebhook) (*EventSubscription, error)
 }
 type OneTimeTokenForApplicationResolver interface {
 	Raw(ctx context.Context, obj *OneTimeTokenForApplication) (*string, error)
@@ -1214,6 +1220,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.EventSpec.Type(childComplexity), true
 
+	case "EventSubscription.Address":
+		if e.complexity.EventSubscription.Address == nil {
+			break
+		}
+
+		return e.complexity.EventSubscription.Address(childComplexity), true
+
 	case "FetchRequest.auth":
 		if e.complexity.FetchRequest.Auth == nil {
 			break
@@ -1798,6 +1811,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.RequestClientCredentialsForRuntime(childComplexity, args["id"].(string)), true
+
+	case "Mutation.requestEventSubscription":
+		if e.complexity.Mutation.RequestEventSubscription == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_requestEventSubscription_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.RequestEventSubscription(childComplexity, args["subject"].(string), args["webhook"].(*EventWebhook)), true
 
 	case "Mutation.requestOneTimeTokenForApplication":
 		if e.complexity.Mutation.RequestOneTimeTokenForApplication == nil {
@@ -2903,6 +2928,12 @@ enum ApplicationWebhookType {
 	CONFIGURATION_CHANGED
 }
 
+enum AuthType {
+	None
+	Basic
+	OAuth2
+}
+
 enum DocumentFormat {
 	MARKDOWN
 }
@@ -3205,6 +3236,17 @@ input EventSpecInput {
 	type: EventSpecType!
 	format: SpecFormat!
 	fetchRequest: FetchRequestInput
+}
+
+input EventWebhook {
+	name: String!
+	url: String!
+	authType: AuthType!
+	Username: String
+	Password: String
+	TokenURL: String
+	ClientID: String
+	ClientSecret: String
 }
 
 input FetchRequestInput {
@@ -3567,6 +3609,10 @@ type EventSpec {
 	type: EventSpecType!
 	format: SpecFormat!
 	fetchRequest: FetchRequest
+}
+
+type EventSubscription {
+	Address: String!
 }
 
 """
@@ -4114,6 +4160,7 @@ type Mutation {
 	- [delete automatic scenario assignments for selector](examples/delete-automatic-scenario-assignments-for-selector/delete-automatic-scenario-assignments-for-selector.graphql)
 	"""
 	deleteAutomaticScenarioAssignmentsForSelector(selector: LabelSelectorInput!): [AutomaticScenarioAssignment!]! @hasScopes(path: "graphql.mutation.deleteAutomaticScenarioAssignmentsForSelector")
+	requestEventSubscription(subject: String!, webhook: EventWebhook): EventSubscription! @hasScopes(path: "graphql.mutation.requestEventSubscription")
 }
 
 `},
@@ -4842,6 +4889,28 @@ func (ec *executionContext) field_Mutation_requestClientCredentialsForRuntime_ar
 		}
 	}
 	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_requestEventSubscription_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["subject"]; ok {
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["subject"] = arg0
+	var arg1 *EventWebhook
+	if tmp, ok := rawArgs["webhook"]; ok {
+		arg1, err = ec.unmarshalOEventWebhook2ᚖgithubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐEventWebhook(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["webhook"] = arg1
 	return args, nil
 }
 
@@ -8958,6 +9027,43 @@ func (ec *executionContext) _EventSpec_fetchRequest(ctx context.Context, field g
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
 	return ec.marshalOFetchRequest2ᚖgithubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐFetchRequest(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _EventSubscription_Address(ctx context.Context, field graphql.CollectedField, obj *EventSubscription) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "EventSubscription",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Address, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNString2string(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _FetchRequest_url(ctx context.Context, field graphql.CollectedField, obj *FetchRequest) (ret graphql.Marshaler) {
@@ -13317,6 +13423,70 @@ func (ec *executionContext) _Mutation_deleteAutomaticScenarioAssignmentsForSelec
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
 	return ec.marshalNAutomaticScenarioAssignment2ᚕᚖgithubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐAutomaticScenarioAssignment(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_requestEventSubscription(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_requestEventSubscription_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		directive0 := func(rctx context.Context) (interface{}, error) {
+			ctx = rctx // use context from middleware stack in children
+			return ec.resolvers.Mutation().RequestEventSubscription(rctx, args["subject"].(string), args["webhook"].(*EventWebhook))
+		}
+		directive1 := func(ctx context.Context) (interface{}, error) {
+			path, err := ec.unmarshalNString2string(ctx, "graphql.mutation.requestEventSubscription")
+			if err != nil {
+				return nil, err
+			}
+			return ec.directives.HasScopes(ctx, nil, directive0, path)
+		}
+
+		tmp, err := directive1(rctx)
+		if err != nil {
+			return nil, err
+		}
+		if data, ok := tmp.(*EventSubscription); ok {
+			return data, nil
+		} else if tmp == nil {
+			return nil, nil
+		}
+		return nil, fmt.Errorf(`unexpected type %T from directive, should be *github.com/kyma-incubator/compass/components/director/pkg/graphql.EventSubscription`, tmp)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*EventSubscription)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNEventSubscription2ᚖgithubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐEventSubscription(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _OAuthCredentialData_clientId(ctx context.Context, field graphql.CollectedField, obj *OAuthCredentialData) (ret graphql.Marshaler) {
@@ -18868,6 +19038,66 @@ func (ec *executionContext) unmarshalInputEventSpecInput(ctx context.Context, ob
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputEventWebhook(ctx context.Context, obj interface{}) (EventWebhook, error) {
+	var it EventWebhook
+	var asMap = obj.(map[string]interface{})
+
+	for k, v := range asMap {
+		switch k {
+		case "name":
+			var err error
+			it.Name, err = ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "url":
+			var err error
+			it.URL, err = ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "authType":
+			var err error
+			it.AuthType, err = ec.unmarshalNAuthType2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐAuthType(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "Username":
+			var err error
+			it.Username, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "Password":
+			var err error
+			it.Password, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "TokenURL":
+			var err error
+			it.TokenURL, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "ClientID":
+			var err error
+			it.ClientID, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "ClientSecret":
+			var err error
+			it.ClientSecret, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputFetchRequestInput(ctx context.Context, obj interface{}) (FetchRequestInput, error) {
 	var it FetchRequestInput
 	var asMap = obj.(map[string]interface{})
@@ -20304,6 +20534,33 @@ func (ec *executionContext) _EventSpec(ctx context.Context, sel ast.SelectionSet
 	return out
 }
 
+var eventSubscriptionImplementors = []string{"EventSubscription"}
+
+func (ec *executionContext) _EventSubscription(ctx context.Context, sel ast.SelectionSet, obj *EventSubscription) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.RequestContext, sel, eventSubscriptionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("EventSubscription")
+		case "Address":
+			out.Values[i] = ec._EventSubscription_Address(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
 var fetchRequestImplementors = []string{"FetchRequest"}
 
 func (ec *executionContext) _FetchRequest(ctx context.Context, sel ast.SelectionSet, obj *FetchRequest) graphql.Marshaler {
@@ -20871,6 +21128,11 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			out.Values[i] = ec._Mutation_deleteAutomaticScenarioAssignmentForScenario(ctx, field)
 		case "deleteAutomaticScenarioAssignmentsForSelector":
 			out.Values[i] = ec._Mutation_deleteAutomaticScenarioAssignmentsForSelector(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "requestEventSubscription":
+			out.Values[i] = ec._Mutation_requestEventSubscription(ctx, field)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
@@ -22531,6 +22793,15 @@ func (ec *executionContext) marshalNApplicationWebhookType2githubᚗcomᚋkyma�
 	return v
 }
 
+func (ec *executionContext) unmarshalNAuthType2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐAuthType(ctx context.Context, v interface{}) (AuthType, error) {
+	var res AuthType
+	return res, res.UnmarshalGQL(v)
+}
+
+func (ec *executionContext) marshalNAuthType2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐAuthType(ctx context.Context, sel ast.SelectionSet, v AuthType) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNAutomaticScenarioAssignment2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐAutomaticScenarioAssignment(ctx context.Context, sel ast.SelectionSet, v AutomaticScenarioAssignment) graphql.Marshaler {
 	return ec._AutomaticScenarioAssignment(ctx, sel, &v)
 }
@@ -22756,6 +23027,20 @@ func (ec *executionContext) unmarshalNEventSpecType2githubᚗcomᚋkymaᚑincuba
 
 func (ec *executionContext) marshalNEventSpecType2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐEventSpecType(ctx context.Context, sel ast.SelectionSet, v EventSpecType) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) marshalNEventSubscription2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐEventSubscription(ctx context.Context, sel ast.SelectionSet, v EventSubscription) graphql.Marshaler {
+	return ec._EventSubscription(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEventSubscription2ᚖgithubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐEventSubscription(ctx context.Context, sel ast.SelectionSet, v *EventSubscription) graphql.Marshaler {
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._EventSubscription(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNFetchMode2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐFetchMode(ctx context.Context, v interface{}) (FetchMode, error) {
@@ -24217,6 +24502,18 @@ func (ec *executionContext) unmarshalOEventSpecInput2ᚖgithubᚗcomᚋkymaᚑin
 		return nil, nil
 	}
 	res, err := ec.unmarshalOEventSpecInput2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐEventSpecInput(ctx, v)
+	return &res, err
+}
+
+func (ec *executionContext) unmarshalOEventWebhook2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐEventWebhook(ctx context.Context, v interface{}) (EventWebhook, error) {
+	return ec.unmarshalInputEventWebhook(ctx, v)
+}
+
+func (ec *executionContext) unmarshalOEventWebhook2ᚖgithubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐEventWebhook(ctx context.Context, v interface{}) (*EventWebhook, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalOEventWebhook2githubᚗcomᚋkymaᚑincubatorᚋcompassᚋcomponentsᚋdirectorᚋpkgᚋgraphqlᚐEventWebhook(ctx, v)
 	return &res, err
 }
 

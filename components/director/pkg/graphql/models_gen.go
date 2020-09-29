@@ -273,6 +273,21 @@ type EventSpecInput struct {
 	FetchRequest *FetchRequestInput `json:"fetchRequest"`
 }
 
+type EventSubscription struct {
+	Address string `json:"Address"`
+}
+
+type EventWebhook struct {
+	Name         string   `json:"name"`
+	URL          string   `json:"url"`
+	AuthType     AuthType `json:"authType"`
+	Username     *string  `json:"Username"`
+	Password     *string  `json:"Password"`
+	TokenURL     *string  `json:"TokenURL"`
+	ClientID     *string  `json:"ClientID"`
+	ClientSecret *string  `json:"ClientSecret"`
+}
+
 // Compass performs fetch to validate if request is correct and stores a copy
 type FetchRequest struct {
 	URL    string              `json:"url"`
@@ -732,6 +747,49 @@ func (e *ApplicationWebhookType) UnmarshalGQL(v interface{}) error {
 }
 
 func (e ApplicationWebhookType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+type AuthType string
+
+const (
+	AuthTypeNone   AuthType = "None"
+	AuthTypeBasic  AuthType = "Basic"
+	AuthTypeOAuth2 AuthType = "OAuth2"
+)
+
+var AllAuthType = []AuthType{
+	AuthTypeNone,
+	AuthTypeBasic,
+	AuthTypeOAuth2,
+}
+
+func (e AuthType) IsValid() bool {
+	switch e {
+	case AuthTypeNone, AuthTypeBasic, AuthTypeOAuth2:
+		return true
+	}
+	return false
+}
+
+func (e AuthType) String() string {
+	return string(e)
+}
+
+func (e *AuthType) UnmarshalGQL(v interface{}) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = AuthType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid AuthType", str)
+	}
+	return nil
+}
+
+func (e AuthType) MarshalGQL(w io.Writer) {
 	fmt.Fprint(w, strconv.Quote(e.String()))
 }
 

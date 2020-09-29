@@ -20,6 +20,7 @@ import (
 	"github.com/kyma-incubator/compass/components/director/internal/authenticator"
 	"github.com/kyma-incubator/compass/components/director/internal/domain"
 	"github.com/kyma-incubator/compass/components/director/internal/domain/auth"
+	"github.com/kyma-incubator/compass/components/director/internal/domain/ems"
 	"github.com/kyma-incubator/compass/components/director/internal/domain/label"
 	"github.com/kyma-incubator/compass/components/director/internal/domain/labeldef"
 	"github.com/kyma-incubator/compass/components/director/internal/domain/oauth20"
@@ -77,6 +78,8 @@ type config struct {
 	OAuth20      oauth20.Config
 
 	Features features.Config
+
+	EMS ems.Config
 }
 
 func main() {
@@ -84,8 +87,10 @@ func main() {
 	err := envconfig.InitWithPrefix(&cfg, "APP")
 	exitOnError(err, "Error while loading app config")
 
-	configureLogger()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
+	configureLogger()
 	transact, closeFunc, err := persistence.Configure(log.StandardLogger(), cfg.Database)
 	exitOnError(err, "Error while establishing the connection to the database")
 
@@ -106,6 +111,7 @@ func main() {
 	exitOnError(err, "Error while reading Pairing Adapters Configuration")
 	gqlCfg := graphql.Config{
 		Resolvers: domain.NewRootResolver(
+			ctx,
 			transact,
 			cfgProvider,
 			cfg.OneTimeToken,
@@ -113,6 +119,7 @@ func main() {
 			pairingAdapters,
 			cfg.Features,
 			metricsCollector,
+			cfg.EMS,
 		),
 		Directives: graphql.DirectiveRoot{
 			HasScopes: scope.NewDirective(cfgProvider).VerifyScopes,
@@ -180,6 +187,7 @@ func main() {
 	go func() {
 		<-stopCh
 		// Interrupt signal received - shut down the servers
+		cancel()
 		shutdownMetricsSrv()
 		shutdownMainSrv()
 	}()

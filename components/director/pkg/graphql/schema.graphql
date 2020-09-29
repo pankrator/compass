@@ -53,6 +53,12 @@ enum ApplicationWebhookType {
 	CONFIGURATION_CHANGED
 }
 
+enum AuthType {
+	None
+	Basic
+	OAuth2
+}
+
 enum DocumentFormat {
 	MARKDOWN
 }
@@ -355,6 +361,17 @@ input EventSpecInput {
 	type: EventSpecType!
 	format: SpecFormat!
 	fetchRequest: FetchRequestInput
+}
+
+input EventWebhook {
+	name: String!
+	url: String!
+	authType: AuthType!
+	Username: String
+	Password: String
+	TokenURL: String
+	ClientID: String
+	ClientSecret: String
 }
 
 input FetchRequestInput {
@@ -717,6 +734,10 @@ type EventSpec {
 	type: EventSpecType!
 	format: SpecFormat!
 	fetchRequest: FetchRequest
+}
+
+type EventSubscription {
+	Address: String!
 }
 
 """
@@ -1264,5 +1285,6 @@ type Mutation {
 	- [delete automatic scenario assignments for selector](examples/delete-automatic-scenario-assignments-for-selector/delete-automatic-scenario-assignments-for-selector.graphql)
 	"""
 	deleteAutomaticScenarioAssignmentsForSelector(selector: LabelSelectorInput!): [AutomaticScenarioAssignment!]! @hasScopes(path: "graphql.mutation.deleteAutomaticScenarioAssignmentsForSelector")
+	requestEventSubscription(subject: String!, webhook: EventWebhook): EventSubscription! @hasScopes(path: "graphql.mutation.requestEventSubscription")
 }
 

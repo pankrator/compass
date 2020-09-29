@@ -12,6 +12,7 @@ import (
 	"github.com/kyma-incubator/compass/components/director/internal/domain/apptemplate"
 	"github.com/kyma-incubator/compass/components/director/internal/domain/auth"
 	"github.com/kyma-incubator/compass/components/director/internal/domain/document"
+	"github.com/kyma-incubator/compass/components/director/internal/domain/ems"
 	"github.com/kyma-incubator/compass/components/director/internal/domain/eventdef"
 	"github.com/kyma-incubator/compass/components/director/internal/domain/eventing"
 	"github.com/kyma-incubator/compass/components/director/internal/domain/fetchrequest"
@@ -63,9 +64,11 @@ type RootResolver struct {
 	mpPackage           *mp_package.Resolver
 	packageInstanceAuth *packageinstanceauth.Resolver
 	scenarioAssignment  *scenarioassignment.Resolver
+	ems                 *ems.Resolver
 }
 
 func NewRootResolver(
+	ctx context.Context,
 	transact persistence.Transactioner,
 	cfgProvider *configprovider.Provider,
 	oneTimeTokenCfg onetimetoken.Config,
@@ -73,6 +76,7 @@ func NewRootResolver(
 	pairingAdaptersMapping map[string]string,
 	featuresConfig features.Config,
 	metricsCollector *metrics.Collector,
+	emsConfig ems.Config,
 ) *RootResolver {
 	oAuth20HTTPClient := &http.Client{Timeout: oAuth20Cfg.HTTPClientTimeout}
 	metricsCollector.InstrumentOAuth20HTTPClient(oAuth20HTTPClient)
@@ -141,6 +145,7 @@ func NewRootResolver(
 	appSvc := application.NewService(cfgProvider, applicationRepo, webhookRepo, runtimeRepo, labelRepo, intSysRepo, labelUpsertSvc, scenariosSvc, packageSvc, uidSvc)
 	tokenSvc := onetimetoken.NewTokenService(connectorGCLI, systemAuthSvc, appSvc, appConverter, tenantSvc, httpClient, oneTimeTokenCfg.ConnectorURL, pairingAdaptersMapping)
 	packageInstanceAuthSvc := packageinstanceauth.NewService(packageInstanceAuthRepo, uidSvc)
+	emsSvc := ems.NewService(ctx, httpClient, &emsConfig)
 
 	return &RootResolver{
 		app:                 application.NewResolver(transact, appSvc, webhookSvc, oAuth20Svc, systemAuthSvc, appConverter, webhookConverter, systemAuthConverter, eventingSvc, packageSvc, packageConverter),
@@ -162,6 +167,7 @@ func NewRootResolver(
 		mpPackage:           mp_package.NewResolver(transact, packageSvc, packageInstanceAuthSvc, apiSvc, eventAPISvc, docSvc, packageConverter, packageInstanceAuthConv, apiConverter, eventAPIConverter, docConverter),
 		packageInstanceAuth: packageinstanceauth.NewResolver(transact, packageInstanceAuthSvc, packageSvc, packageInstanceAuthConv),
 		scenarioAssignment:  scenarioassignment.NewResolver(transact, scenarioAssignmentSvc, assignmentConv),
+		ems:                 ems.NewResolver(emsSvc),
 	}
 }
 
@@ -446,6 +452,10 @@ func (r *mutationResolver) DeleteAutomaticScenarioAssignmentsForSelector(ctx con
 }
 func (r *mutationResolver) CreateAutomaticScenarioAssignment(ctx context.Context, in graphql.AutomaticScenarioAssignmentSetInput) (*graphql.AutomaticScenarioAssignment, error) {
 	return r.scenarioAssignment.CreateAutomaticScenarioAssignment(ctx, in)
+}
+
+func (r *mutationResolver) RequestEventSubscription(ctx context.Context, subject string, webhook *graphql.EventWebhook) (*graphql.EventSubscription, error) {
+	return r.ems.RequestEventSubscription(ctx, subject, webhook)
 }
 
 type applicationResolver struct {
