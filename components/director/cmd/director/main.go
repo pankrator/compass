@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/kyma-incubator/compass/components/director/pkg/normalizer"
@@ -98,6 +100,32 @@ type config struct {
 	Features features.Config
 }
 
+func ensureRuntimeLabelsCorrectness(transact persistence.Transactioner, labelRepo label.LabelRepository) error {
+	fmt.Println(">>>>>ENSURING")
+	tx, err := transact.Begin()
+	if err != nil {
+		return errors.Wrap(err, "could not begin transaction")
+	}
+	result := label.Collection{}
+	if err = tx.Select(&result, "SELECT * FROM labels WHERE key LIKE '%_defaultEventing%'"); err != nil {
+		return err
+	}
+
+	for _, r := range result {
+		fmt.Println(">>>>>", r.Key)
+		r.Key = strings.ReplaceAll(r.Key, "-", "_")
+		rQuery, err := tx.Exec("UPDATE public.labels SET key = $1 WHERE id = $2", r.Key, r.ID)
+		if err != nil {
+			return err
+		}
+		n, _ := rQuery.RowsAffected()
+		fmt.Println("AFFECTED", n)
+	}
+	return tx.Commit()
+
+	// return nil
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -114,6 +142,10 @@ func main() {
 
 	transact, closeFunc, err := persistence.Configure(log.StandardLogger(), cfg.Database)
 	exitOnError(err, "Error while establishing the connection to the database")
+
+	if err := ensureRuntimeLabelsCorrectness(transact, label.NewRepository(label.NewConverter())); err != nil {
+		panic(err)
+	}
 
 	defer func() {
 		err := closeFunc()
