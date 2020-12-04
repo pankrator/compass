@@ -106,24 +106,22 @@ func ensureRuntimeLabelsCorrectness(transact persistence.Transactioner, labelRep
 	if err != nil {
 		return errors.Wrap(err, "could not begin transaction")
 	}
+	defer transact.RollbackUnlessCommitted(tx)
 	result := label.Collection{}
-	if err = tx.Select(&result, "SELECT * FROM labels WHERE key LIKE '%_defaultEventing%'"); err != nil {
+	if err = tx.Select(&result, "SELECT id, key FROM labels WHERE key LIKE '%-%_defaultEventing'"); err != nil {
 		return err
 	}
 
 	for _, r := range result {
-		fmt.Println(">>>>>", r.Key)
 		r.Key = strings.ReplaceAll(r.Key, "-", "_")
 		rQuery, err := tx.Exec("UPDATE public.labels SET key = $1 WHERE id = $2", r.Key, r.ID)
 		if err != nil {
 			return err
 		}
 		n, _ := rQuery.RowsAffected()
-		fmt.Println("AFFECTED", n)
 	}
-	return tx.Commit()
 
-	// return nil
+	return tx.Commit()
 }
 
 func main() {
